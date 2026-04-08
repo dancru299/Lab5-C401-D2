@@ -63,3 +63,61 @@ Augmentation — AI đóng vai trò tra cứu thay cho nhân viên và gợi ý 
 - **Hoàng Ngọc Anh:** Xác định các **Eval metrics** (Chỉ số đo lường độ phân loại intent và trích xuất mức giá) và phân tích **ROI** (Đánh đổi chi phí/lợi ích giữa hệ thống cũ và hệ thống AI mới).
 - **Nguyễn Hoàng Việt:** Phân tích chi tiết **Failure modes** (Trường hợp AI fail như gợi ý khám lung tung do "bài toán đa triệu chứng") và đề xuất các fallback, guardrails để giải quyết.
 - **Nguyễn Anh Đức:** Phụ trách **Prototype research & Prompt test** (Viết prompt nhận diện trạng thái lâm sàng cơ bản của bệnh nhân và test thử trên một bộ mẫu Bảng giá Vinmec).
+
+---
+
+## Mini AI Spec — Cả team
+
+**Sản phẩm:** Vinmec AI Symptom Triage
+**Dành cho:** Bệnh nhân chưa biết chọn chuyên khoa (~30-40% lượt đặt lịch).
+
+### Câu chuyện sản phẩm
+
+> Chị Lan, 32 tuổi, vừa sinh con được 6 tuần. Chị muốn đặt lịch khám hậu sản nhưng vào trang Vinmec thấy hàng chục gói khám, hàng chục chuyên khoa và một bảng giá dài hàng trăm dòng. Chị gọi tổng đài — máy bận. Nhắn tin fanpage — 2 tiếng sau mới có người trả lời.
+>
+> Nếu có **Vinmec AI Chatbot**, chị chỉ cần gõ: *"Tôi vừa sinh xong 6 tuần, muốn khám lại"* — Chatbot phân tích, gợi ý ngay "Gói khám sức khỏe Sau sinh 6 tuần", kèm giá tham khảo và nút đặt lịch. Toàn bộ trong vòng dưới 30 giây, 24/7.
+
+### Input / Output
+
+| | Mô tả | Ví dụ |
+|---|-------|-------|
+| **Input** | Mô tả triệu chứng hoặc tình trạng sức khỏe bằng ngôn ngữ tự nhiên (tiếng Việt, tiếng lóng, từ bình dân) | *"Tôi bị đau đầu liên tục 3 ngày, chóng mặt"* / *"vừa đẻ mổ xong muốn tái khám"* |
+| **Output** | Top 1-3 gợi ý chuyên khoa/gói khám phù hợp + mức giá tham khảo + disclaimer + nút hành động | *"Gợi ý: Khoa Ngoại Thần kinh (khám triệu chứng đau đầu kéo dài). Giá tham khảo: 350.000đ – 500.000đ/lượt. [Đặt lịch] [Gặp tư vấn viên]"* |
+
+### Luồng xử lý (Flow)
+
+```
+User nhập triệu chứng / nhu cầu
+        ↓
+[1] Intent Detection — LLM nhận diện: 
+    (a) Hỏi giá dịch vụ cụ thể  
+    (b) Mô tả triệu chứng cần tư vấn
+        ↓
+[2a] Tra cứu bảng giá (RAG)        [2b] Symptom → Specialty Mapping (LLM)
+     → Trích xuất giá từ DB              → Gợi ý Top 1-3 chuyên khoa
+        ↓                                         ↓
+[3] Tổng hợp kết quả: Gói khám + Giá tham khảo + Disclaimer
+        ↓
+[4] Hiện nút: [Đặt lịch ngay] / [Gặp tư vấn viên]
+        ↓ (nếu user bấm "Gặp tư vấn viên")
+[5] Escalate sang nhân viên CSKH (human handoff)
+```
+
+### Guardrails (Chốt chặn an toàn)
+
+| # | Quy tắc | Lý do |
+|---|---------|-------|
+| 1 | **Không được đưa ra chẩn đoán bệnh** — chỉ gợi ý chuyên khoa/gói khám | Tránh vi phạm pháp lý y tế |
+| 2 | **Không tự bịa số tiền** — giá phải 100% lấy từ tài liệu DB | Tránh gây hiểu lầm tài chính |
+| 3 | **Luôn kèm disclaimer** rõ ràng trên mỗi câu trả lời | Bảo vệ bệnh viện & user |
+| 4 | **Luôn hiện nút "Gặp tư vấn viên"** — không bao giờ để user bí | Đảm bảo có fallback human |
+| 5 | **Không xử lý tình huống khẩn cấp y tế** — nếu phát hiện từ khóa cấp cứu ("ngất xỉu", "khó thở dữ dội",...) thì chuyển thẳng sang hotline cấp cứu | An toàn tính mạng ưu tiên số 1 |
+
+### Chỉ số thành công (Success Metrics)
+
+| Metric | Mục tiêu | Đo bằng cách nào |
+|--------|----------|-----------------|
+| Tỉ lệ gợi ý đúng chuyên khoa | ≥ 80% so với danh mục chuẩn | So sánh output AI vs. danh mục của bác sĩ trên 100 test case |
+| Độ chính xác báo giá | 100% khớp tài liệu gốc (zero hallucination) | Human review ngẫu nhiên 20 query/tuần |
+| Tỉ lệ escalate sang CSKH | ≤ 30% (chatbot tự xử lý được ≥ 70%) | Log hệ thống |
+| Thời gian phản hồi | < 5 giây/query | Monitoring API latency |
